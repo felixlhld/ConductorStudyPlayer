@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图层半透明叠加摄像头播放器</title>
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --bg-color: #121212;
+            --panel-bg: rgba(30, 30, 30, 0.75);
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden;
+        }
+
+        /* 顶部地址栏控制区 */
+        #control-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 50px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            box-sizing: border-box;
+            z-index: 9999;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        #video-url-input {
+            flex: 1;
+            height: 30px;
+            background: rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+            padding: 0 10px;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+
+        .btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 6px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .btn:hover { background: #0056b3; }
+        .btn.secondary { background: #6c757d; }
+        .btn.secondary:hover { background: #545b62; }
+        .btn.danger { background: #dc3545; }
+        .btn.danger:hover { background: #bd2130; }
+
+        /* 主视频播放区域 */
+        #video-container {
+            position: absolute;
+            top: 50px;
+            left: 0;
+            width: 100%;
+            height: calc(100% - 50px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #main-video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .video-mirror {
+            transform: scaleX(-1);
+        }
+
+        /* 可拖拽缩放的摄像头图层 */
+        #camera-wrapper {
+            position: absolute;
+            top: 100px;
+            left: 50px;
+            width: 320px;
+            height: 240px;
+            min-width: 150px;
+            min-height: 110px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 2px solid rgba(255,255,255,0.3);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            overflow: hidden;
+            z-index: 999;
+            display: none; /* 默认隐藏 */
+            cursor: move;
+        }
+
+        /* 摄像头视频流，设置半透明度 */
+        #camera-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.6; /* 半透明叠加效果 */
+            pointer-events: none; /* 防止干扰拖拽 */
+        }
+
+        .camera-mirror {
+            transform: scaleX(-1);
+        }
+
+        /* 缩放手柄 */
+        #resize-handle {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            width: 15px;
+            height: 15px;
+            background: rgba(255,255,255,0.6);
+            cursor: se-resize;
+            border-radius: 4px 0 0 0;
+            z-index: 1001;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 顶部控制栏 -->
+    <div id="control-bar">
+        <input type="text" id="video-url-input" placeholder="请输入视频源地址 (支持 MP4/WebM 或 直接贴入HLS等，取决于浏览器支持)" value="https://googleapis.com">
+        <button class="btn" id="load-video-btn">生成播放器</button>
+        <button class="btn secondary" id="toggle-camera-btn">开启摄像头</button>
+        <button class="btn secondary" id="mirror-video-btn">视频内容镜像反转</button>
+        <button class="btn secondary" id="mirror-camera-btn">摄像头镜像反转</button>
+    </div>
+
+    <!-- 播放器核心容器 -->
+    <div id="video-container">
+        <!-- 主视频 -->
+        <video id="main-video" controls autoplay loop playsinline></video>
+
+        <!-- 悬浮摄像头图层 -->
+        <div id="camera-wrapper">
+            <video id="camera-video" autoplay playsinline muted></video>
+            <div id="resize-handle"></div>
+        </div>
+    </div>
+
+    <script>
+        // DOM 元素获取
+        const videoUrlInput = document.getElementById('video-url-input');
+        const loadVideoBtn = document.getElementById('load-video-btn');
+        const toggleCameraBtn = document.getElementById('toggle-camera-btn');
+        const mirrorVideoBtn = document.getElementById('mirror-video-btn');
+        const mirrorCameraBtn = document.getElementById('mirror-camera-btn');
+        
+        const mainVideo = document.getElementById('main-video');
+        const cameraWrapper = document.getElementById('camera-wrapper');
+        const cameraVideo = document.getElementById('camera-video');
+        const resizeHandle = document.getElementById('resize-handle');
+
+        let cameraStream = null;
+
+        // 1. 地址栏输入并生成/切换新视频
+        function loadVideo() {
+            const url = videoUrlInput.value.trim();
+            if (url) {
+                mainVideo.src = url;
+                mainVideo.load();
+                mainVideo.play().catch(e => console.log("自动播放被阻拦，需手动点击播放:", e));
+            } else {
+                alert("请输入有效的视频地址");
+            }
+        }
+        loadVideoBtn.addEventListener('click', loadVideo);
+        // 支持回车载入
+        videoUrlInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') loadVideo(); });
+
+        // 2. 摄像头一键开启和关闭
+        toggleCameraBtn.addEventListener('click', async () => {
+            if (cameraWrapper.style.display === 'block') {
+                // 关闭摄像头
+                cameraWrapper.style.display = 'none';
+                toggleCameraBtn.textContent = '开启摄像头';
+                toggleCameraBtn.classList.remove('danger');
+                toggleCameraBtn.classList.add('secondary');
+                if (cameraStream) {
+                    cameraStream.getTracks().forEach(track => track.stop());
+                    cameraStream = null;
+                }
+            } else {
+                // 开启摄像头
+                try {
+                    cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    cameraVideo.srcObject = cameraStream;
+                    cameraWrapper.style.display = 'block';
+                    toggleCameraBtn.textContent = '关闭摄像头';
+                    toggleCameraBtn.classList.remove('secondary');
+                    toggleCameraBtn.classList.add('danger');
+                } catch (err) {
+                    alert('无法获取摄像头权限: ' + err.message);
+                }
+            }
+        });
+
+        // 3. 镜像反转控制
+        mirrorVideoBtn.addEventListener('click', () => {
+            mainVideo.classList.toggle('video-mirror');
+        });
+
+        mirrorCameraBtn.addEventListener('click', () => {
+            cameraVideo.classList.toggle('camera-mirror');
+        });
+
+        // 4. 鼠标任意拖拽摄像头窗口
+        let isDragging = false;
+        let startX, startY, initialLeft, initialTop;
+
+        cameraWrapper.addEventListener('mousedown', (e) => {
+            if (e.target === resizeHandle) return; // 过滤缩放事件
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            initialLeft = cameraWrapper.offsetLeft;
+            initialTop = cameraWrapper.offsetTop;
+            document.addEventListener('mousemove', dragMove);
+            document.addEventListener('mouseup', dragEnd);
+        });
+
+        function dragMove(e) {
+            if (!isDragging) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            cameraWrapper.style.left = `${initialLeft + dx}px`;
+            cameraWrapper.style.top = `${initialTop + dy}px`;
+        }
+
+        function dragEnd() {
+            isDragging = false;
+            document.removeEventListener('mousemove', dragMove);
+            document.removeEventListener('mouseup', dragEnd);
+        }
+
+        // 5. 鼠标任意放大和缩小摄像头窗口
+        let isResizing = false;
+        let startWidth, startHeight;
+
+        resizeHandle.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            startWidth = cameraWrapper.offsetWidth;
+            startHeight = cameraWrapper.offsetHeight;
+            e.stopPropagation(); // 阻止冒泡到拖拽事件
+            document.addEventListener('mousemove', resizeMove);
+            document.addEventListener('mouseup', resizeEnd);
+        });
+
+        function resizeMove(e) {
+            if (!isResizing) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            cameraWrapper.style.width = `${startWidth + dx}px`;
+            cameraWrapper.style.height = `${startHeight + dy}px`;
+        }
+
+        function resizeEnd() {
+            isResizing = false;
+            document.removeEventListener('mousemove', resizeMove);
+            document.removeEventListener('mouseup', resizeEnd);
+        }
+
+        // 初始化加载默认视频
+        window.onload = loadVideo;
+    </script>
+</body>
+</html>

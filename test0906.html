@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频播放器 + 半透明摄像头浮窗</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+
+        /* 主视频容器 */
+        .video-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 背景主视频 */
+        .main-video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        /* 摄像头浮窗容器 */
+        .camera-window {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 320px;
+            height: 240px;
+            min-width: 150px;
+            min-height: 110px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: move;
+            user-select: none;
+            z-index: 999;
+            /* 设置半透明叠加强调 */
+            opacity: 0.7; 
+            transition: opacity 0.3s, border-color 0.3s;
+            
+            /* 启用原生等比拉伸 */
+            resize: both;
+        }
+
+        .camera-window:hover {
+            opacity: 0.9;
+            border-color: rgba(255, 255, 255, 0.8);
+        }
+
+        /* 摄像头画面 */
+        .camera-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            pointer-events: none; /* 防止视频本身干扰拖拽事件 */
+            transition: transform 0.3s ease;
+        }
+
+        /* 镜像翻转样式 */
+        .mirror-flipped {
+            transform: scaleX(-1);
+        }
+
+        /* 提示信息 */
+        .info-tip {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            pointer-events: none;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="video-container">
+        <!-- 主视频播放器（这里使用了一段公开测试视频，你也可以换成本地或自己的视频源） -->
+        <video class="main-video" controls autoplay loop muted>
+            <source src="http://192.168.199.11:5244/p/%E7%9B%B4%E6%92%AD%E5%BD%95%E5%83%8F/Shares/stream/20240511-%E5%A7%9A%E8%8F%81%E9%9F%B3%E4%B9%90%E4%BC%9A%E8%A7%86%E9%A2%91/%E4%B8%8A%E5%8D%8A%E5%9C%BA%E6%9C%80%E5%90%8E%E4%B8%80%E9%A6%96%E6%9B%B2%E5%AD%90.mp4?sign=qkqHqRlLtuIKW8bevzAWY9OkwsDUnwQVlXKx9TBFpcU=:0">
+            您的浏览器不支持 HTML5 视频。
+        </video>
+
+        <!-- 摄像头浮窗 -->
+        <div class="camera-window" id="cameraWindow">
+            <video class="camera-video" id="cameraVideo" autoplay playsinline muted></video>
+        </div>
+    </div>
+
+    <div class="info-tip">
+        提示：拖拽窗口边缘可**放大缩小**；按住窗口内部可**拖拽移动**；点击窗口**切换镜像翻转**。
+    </div>
+
+    <script>
+        const cameraWindow = document.getElementById('cameraWindow');
+        const cameraVideo = document.getElementById('cameraVideo');
+
+        // 1. 调用系统摄像头
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 1280, height: 720 },
+                    audio: false
+                });
+                cameraVideo.srcObject = stream;
+            } catch (err) {
+                console.error("无法访问摄像头: ", err);
+                alert("未检测到摄像头或无权限访问。浮窗内将无法显示画面。");
+            }
+        }
+
+        // 2. 实现鼠标拖拽移动 (Drag) 
+        let isDragging = false;
+        let startX, startY, startLeft, startTop;
+        let hasMoved = false; // 用于区分“点击”和“拖拽”
+
+        cameraWindow.addEventListener('mousedown', (e) => {
+            // 如果点击的是右下角缩放区域，则不触发拖拽
+            const rect = cameraWindow.getBoundingClientRect();
+            if (e.clientX > rect.right - 20 && e.clientY > rect.bottom - 20) {
+                return; 
+            }
+
+            isDragging = true;
+            hasMoved = false;
+            
+            startX = e.clientX;
+            startY = e.clientY;
+            startLeft = cameraWindow.offsetLeft;
+            startTop = cameraWindow.offsetTop;
+            
+            cameraWindow.style.transition = 'none'; // 拖拽时关闭动画
+            e.preventDefault();
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+
+            // 如果位移超过3像素，判定为拖拽而非点击
+            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                hasMoved = true;
+            }
+
+            // 计算新位置
+            let newLeft = startLeft + dx;
+            let newTop = startTop + dy;
+
+            // 边界限制（防止拖出屏幕外）
+            const maxLeft = window.innerWidth - cameraWindow.offsetWidth;
+            const maxTop = window.innerHeight - cameraWindow.offsetHeight;
+            newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+            newTop = Math.max(0, Math.min(newTop, maxTop));
+
+            cameraWindow.style.left = `${newLeft}px`;
+            cameraWindow.style.top = `${newTop}px`;
+            // 清除右边距定位，改用绝对坐标定位
+            cameraWindow.style.right = 'auto'; 
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        // 3. 点击切换镜像翻转
+        cameraWindow.addEventListener('click', (e) => {
+            // 如果刚刚发生了拖拽，或者用户在缩放窗口，则不触发镜像翻转
+            const rect = cameraWindow.getBoundingClientRect();
+            if (hasMoved || (e.clientX > rect.right - 20 && e.clientY > rect.bottom - 20)) {
+                return;
+            }
+            
+            // 切换镜像类
+            cameraVideo.classList.toggle('mirror-flipped');
+        });
+
+        // 初始化
+        initCamera();
+    </script>
+</body>
+</html>
