@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>在线视频 + 摄像头半透明叠加播放器</title>
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --bg-color: #121212;
+            --panel-bg: rgba(30, 30, 30, 0.75);
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden;
+        }
+
+        /* 顶部地址栏控制区 */
+        #control-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 50px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            box-sizing: border-box;
+            z-index: 9999;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        #video-url-input {
+            flex: 1;
+            height: 30px;
+            background: rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+            padding: 0 10px;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+
+        .btn {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 6px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .btn:hover { background: #0056b3; }
+        .btn.secondary { background: #6c757d; }
+        .btn.secondary:hover { background: #545b62; }
+        .btn.danger { background: #dc3545; }
+        .btn.danger:hover { background: #bd2130; }
+
+        /* 主视频播放区域 */
+        #video-container {
+            position: absolute;
+            top: 50px;
+            left: 0;
+            width: 100%;
+            height: calc(100% - 50px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #main-video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .video-mirror {
+            transform: scaleX(-1);
+        }
+
+        /* 嵌入播放器容器 */
+        #embed-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            background: #000;
+            z-index: 1;
+        }
+
+        #embed-container iframe {
+            width: 100%;
+            height: 100%;
+            border: 0;
+            display: block;
+        }
+
+        /* 可拖拽缩放的摄像头图层 */
+        #camera-wrapper {
+            position: absolute;
+            top: 100px;
+            left: 50px;
+            width: 320px;
+            height: 240px;
+            min-width: 150px;
+            min-height: 110px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 2px solid rgba(255,255,255,0.3);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            overflow: hidden;
+            z-index: 999;
+            display: none; /* 默认隐藏 */
+            cursor: move;
+        }
+
+        /* 摄像头视频流，设置半透明度 */
+        #camera-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.6; /* 半透明叠加效果 */
+            pointer-events: none; /* 防止干扰拖拽 */
+        }
+
+        .camera-mirror {
+            transform: scaleX(-1);
+        }
+
+        /* 缩放手柄 */
+        #resize-handle {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            width: 15px;
+            height: 15px;
+            background: rgba(255,255,255,0.6);
+            cursor: se-resize;
+            border-radius: 4px 0 0 0;
+            z-index: 1001;
+        }
+
+        /* 可拖拽的悬浮 PNG 图片图层 */
+        #image-wrapper {
+            position: absolute;
+            top: 100px;
+            left: 400px;
+            background: transparent;
+            border: 2px dashed rgba(255,255,255,0.4);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            overflow: hidden;
+            z-index: 998;
+            display: none; /* 默认隐藏 */
+            cursor: move;
+        }
+
+        #overlay-image {
+            display: block;
+            max-width: 400px;
+            max-height: 300px;
+            pointer-events: none; /* 防止干扰拖拽 */
+        }
+
+        .image-mirror {
+            transform: scaleX(-1);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 顶部控制栏 -->
+    <div id="control-bar">
+        <input type="text" id="video-url-input"
+               placeholder="支持 YouTube / Bilibili 链接，或 MP4/WebM/HLS 地址">
+        <button class="btn" id="load-video-btn">生成播放器</button>
+        <button class="btn secondary" id="toggle-camera-btn">开启摄像头</button>
+        <button class="btn secondary" id="toggle-image-btn">上传图片</button>
+        <button class="btn secondary" id="mirror-video-btn">视频内容镜像反转</button>
+        <button class="btn secondary" id="mirror-camera-btn">摄像头镜像反转</button>
+        <button class="btn secondary" id="mirror-image-btn">图片镜像反转</button>
+        <input type="file" id="image-file-input" accept="image/png" style="display:none">
+    </div>
+
+    <!-- 播放器核心容器 -->
+    <div id="video-container">
+        <!-- 主视频 -->
+        <video id="main-video" controls autoplay loop playsinline></video>
+
+        <!-- 嵌入播放器容器：YouTube / Bilibili / Vimeo 等 -->
+        <div id="embed-container"></div>
+
+        <!-- 悬浮摄像头图层 -->
+        <div id="camera-wrapper">
+            <video id="camera-video" autoplay playsinline muted></video>
+            <div id="resize-handle"></div>
+        </div>
+
+        <!-- 悬浮 PNG 图片图层 -->
+        <div id="image-wrapper">
+            <img id="overlay-image" alt="悬浮图片">
+        </div>
+    </div>
+
+    <script>
+        // DOM 元素获取
+        const videoUrlInput = document.getElementById('video-url-input');
+        const loadVideoBtn = document.getElementById('load-video-btn');
+        const toggleCameraBtn = document.getElementById('toggle-camera-btn');
+        const mirrorVideoBtn = document.getElementById('mirror-video-btn');
+        const mirrorCameraBtn = document.getElementById('mirror-camera-btn');
+
+        const mainVideo = document.getElementById('main-video');
+        const cameraWrapper = document.getElementById('camera-wrapper');
+        const cameraVideo = document.getElementById('camera-video');
+        const resizeHandle = document.getElementById('resize-handle');
+        const embedContainer = document.getElementById('embed-container');
+        const toggleImageBtn = document.getElementById('toggle-image-btn');
+        const mirrorImageBtn = document.getElementById('mirror-image-btn');
+        const imageFileInput = document.getElementById('image-file-input');
+        const imageWrapper = document.getElementById('image-wrapper');
+        const overlayImage = document.getElementById('overlay-image');
+
+        let cameraStream = null;
+        let videoMirror = false;
+        let imageLoaded = false;
+
+        /* =========================
+           解析 YouTube 视频 ID
+        ========================= */
+        function getYouTubeId(url) {
+            try {
+                const u = new URL(url);
+                const host = u.hostname.toLowerCase();
+
+                if (host === 'youtu.be') {
+                    const id = u.pathname.slice(1).split('/')[0];
+                    if (/^[A-Za-z0-9_-]{11}$/.test(id)) return id;
+                    return null;
+                }
+
+                if (
+                    host === 'youtube.com' ||
+                    host === 'www.youtube.com' ||
+                    host === 'm.youtube.com'
+                ) {
+                    if (u.pathname === '/watch') {
+                        const v = u.searchParams.get('v');
+                        if (v && /^[A-Za-z0-9_-]{11}$/.test(v)) return v;
+                    }
+
+                    const m = u.pathname.match(/\/(?:embed|shorts|v|live)\/([A-Za-z0-9_-]{11})/);
+                    if (m) return m[1];
+                }
+            } catch (e) {}
+            return null;
+        }
+
+        /* =========================
+           解析 Bilibili 链接
+           支持 BV 号和 av 号，支持 ?p=2 分P
+        ========================= */
+        function getBilibiliInfo(url) {
+            try {
+                const u = new URL(url);
+                const host = u.hostname.toLowerCase();
+
+                if (!host.includes('bilibili.com')) return null;
+
+                const p = u.searchParams.get('p');
+                let page = p ? parseInt(p, 10) : 1;
+                if (!Number.isFinite(page) || page < 1) page = 1;
+
+                let bvid = null;
+                const bv = u.pathname.match(/\/video\/(BV[0-9A-Za-z]+)/);
+                if (bv) bvid = bv[1];
+                if (!bvid && u.searchParams.get('bvid')) {
+                    bvid = u.searchParams.get('bvid');
+                }
+
+                let aid = null;
+                const av = u.pathname.match(/\/video\/av(\d+)/);
+                if (av) aid = parseInt(av[1], 10);
+                if (!aid && u.searchParams.get('aid')) {
+                    aid = parseInt(u.searchParams.get('aid'), 10);
+                }
+
+                if (!bvid && !aid) return null;
+                return { bvid, aid, page };
+            } catch (e) {
+                return null;
+            }
+        }
+
+        /* =========================
+           解析 Vimeo 视频 ID
+        ========================= */
+        function getVimeoId(url) {
+            try {
+                const u = new URL(url);
+                if (u.hostname.toLowerCase().includes('vimeo.com')) {
+                    const m = u.pathname.match(/\/(\d+)/);
+                    if (m) return m[1];
+                }
+            } catch (e) {}
+            return null;
+        }
+
+        /* =========================
+           显示嵌入播放器
+        ========================= */
+        function showEmbed(src, title) {
+            mainVideo.pause();
+            mainVideo.removeAttribute('src');
+            mainVideo.load();
+            mainVideo.style.display = 'none';
+
+            embedContainer.innerHTML = '';
+
+            const iframe = document.createElement('iframe');
+            iframe.src = src;
+            iframe.title = title;
+            iframe.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture; clipboard-write';
+            iframe.allowFullscreen = true;
+
+            embedContainer.appendChild(iframe);
+            embedContainer.style.display = 'block';
+
+            applyVideoMirror();
+        }
+
+        /* =========================
+           显示原生 video 播放器
+        ========================= */
+        function showDirect(url) {
+            embedContainer.innerHTML = '';
+            embedContainer.style.display = 'none';
+
+            mainVideo.style.display = 'block';
+            mainVideo.src = url;
+            mainVideo.load();
+            mainVideo.play().catch(e => console.log("自动播放被阻拦，需手动点击播放:", e));
+
+            applyVideoMirror();
+        }
+
+        /* =========================
+           视频镜像状态应用
+        ========================= */
+        function applyVideoMirror() {
+            mainVideo.classList.toggle('video-mirror', videoMirror);
+
+            const iframe = embedContainer.querySelector('iframe');
+            if (iframe) {
+                iframe.classList.toggle('video-mirror', videoMirror);
+            }
+        }
+
+        /* =========================
+           根据 URL 自动选择播放器
+        ========================= */
+        function loadVideo() {
+            const url = videoUrlInput.value.trim();
+            if (!url) {
+                alert("请输入有效的视频地址");
+                return;
+            }
+
+            // 1. YouTube
+            const youtubeId = getYouTubeId(url);
+            if (youtubeId) {
+                showEmbed(
+                    `https://www.youtube.com/embed/${encodeURIComponent(youtubeId)}?rel=0&modestbranding=1&playsinline=1`,
+                    "YouTube"
+                );
+                return;
+            }
+
+            // 2. Bilibili
+            const bili = getBilibiliInfo(url);
+            if (bili) {
+                let src = "https://player.bilibili.com/player.html?";
+                if (bili.bvid) {
+                    src += `bvid=${encodeURIComponent(bili.bvid)}&`;
+                } else {
+                    src += `aid=${bili.aid}&`;
+                }
+                src += `page=${bili.page}&autoplay=1`;
+
+                showEmbed(src, "Bilibili");
+                return;
+            }
+
+            // 3. Vimeo
+            const vimeoId = getVimeoId(url);
+            if (vimeoId) {
+                showEmbed(`https://player.vimeo.com/video/${vimeoId}`, "Vimeo");
+                return;
+            }
+
+            // 4. 直接视频地址：MP4 / WebM / HLS 等
+            if (/\.(mp4|webm|ogg|ogv|mov|m4v|m3u8)(\?|#|$)/i.test(url)) {
+                showDirect(url);
+                return;
+            }
+
+            // 5. 其他网址兜底：尝试 iframe 嵌入
+            // 注意：很多网站会禁止被 iframe 嵌入，实际能否显示取决于目标网站策略
+            showEmbed(url, "Web 页面");
+        }
+
+        loadVideoBtn.addEventListener('click', loadVideo);
+        videoUrlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') loadVideo();
+        });
+
+        /* =========================
+           摄像头开启 / 关闭
+        ========================= */
+        toggleCameraBtn.addEventListener('click', async () => {
+            if (cameraWrapper.style.display === 'block') {
+                // 关闭摄像头
+                cameraWrapper.style.display = 'none';
+                toggleCameraBtn.textContent = '开启摄像头';
+                toggleCameraBtn.classList.remove('danger');
+                toggleCameraBtn.classList.add('secondary');
+
+                if (cameraStream) {
+                    cameraStream.getTracks().forEach(track => track.stop());
+                    cameraStream = null;
+                }
+            } else {
+                // 开启摄像头
+                try {
+                    cameraStream = await navigator.mediaDevices.getUserMedia({
+                        video: true,
+                        audio: false
+                    });
+
+                    cameraVideo.srcObject = cameraStream;
+                    cameraWrapper.style.display = 'block';
+
+                    toggleCameraBtn.textContent = '关闭摄像头';
+                    toggleCameraBtn.classList.remove('secondary');
+                    toggleCameraBtn.classList.add('danger');
+                } catch (err) {
+                    alert("无法开启摄像头：" + err.message);
+                }
+            }
+        });
+
+        /* =========================
+           镜像按钮
+        ========================= */
+        mirrorVideoBtn.addEventListener('click', () => {
+            videoMirror = !videoMirror;
+            applyVideoMirror();
+        });
+
+        mirrorCameraBtn.addEventListener('click', () => {
+            cameraVideo.classList.toggle('camera-mirror');
+        });
+
+        /* =========================           悬浮 PNG 图片：上传 / 开关 / 镜像
+        ========================= */
+        toggleImageBtn.addEventListener('click', () => {
+            if (imageLoaded) {
+                // 已有图片：切换显示 / 隐藏
+                if (imageWrapper.style.display === 'block') {
+                    imageWrapper.style.display = 'none';
+                    toggleImageBtn.textContent = '上传图片';
+                    toggleImageBtn.classList.remove('danger');
+                    toggleImageBtn.classList.add('secondary');
+                } else {
+                    imageWrapper.style.display = 'block';
+                    toggleImageBtn.textContent = '隐藏图片';
+                    toggleImageBtn.classList.remove('secondary');
+                    toggleImageBtn.classList.add('danger');
+                }
+            } else {
+                // 尚未上传：打开文件选择框
+                imageFileInput.click();
+            }
+        });
+
+        imageFileInput.addEventListener('change', () => {
+            const file = imageFileInput.files[0];
+            if (!file) return;
+
+            if (file.type !== 'image/png') {
+                alert("仅支持 PNG 格式图片");
+                imageFileInput.value = '';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                overlayImage.src = e.target.result;
+                imageLoaded = true;
+                imageWrapper.style.display = 'block';
+                toggleImageBtn.textContent = '隐藏图片';
+                toggleImageBtn.classList.remove('secondary');
+                toggleImageBtn.classList.add('danger');
+            };
+            reader.readAsDataURL(file);
+            imageFileInput.value = '';
+        });
+
+        mirrorImageBtn.addEventListener('click', () => {
+            overlayImage.classList.toggle('image-mirror');
+        });
+
+        /* =========================
+           悬浮图片窗口拖拽
+        ========================= */
+        let isImageDragging = false;
+        let imgDragStartX = 0;
+        let imgDragStartY = 0;
+        let imgDragStartLeft = 0;
+        let imgDragStartTop = 0;
+
+        imageWrapper.addEventListener('mousedown', (e) => {
+            isImageDragging = true;
+            imgDragStartX = e.clientX;
+            imgDragStartY = e.clientY;
+            imgDragStartLeft = imageWrapper.offsetLeft;
+            imgDragStartTop = imageWrapper.offsetTop;
+
+            e.preventDefault();
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (isImageDragging) {
+                const left = imgDragStartLeft + (e.clientX - imgDragStartX);
+                const top = imgDragStartTop + (e.clientY - imgDragStartY);
+
+                imageWrapper.style.left = left + 'px';
+                imageWrapper.style.top = top + 'px';
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            isImageDragging = false;
+        });
+
+        /* =========================           摄像头窗口拖拽
+        ========================= */
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let dragStartLeft = 0;
+        let dragStartTop = 0;
+
+        cameraWrapper.addEventListener('mousedown', (e) => {
+            if (e.target === resizeHandle) return;
+
+            isDragging = true;
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+            dragStartLeft = cameraWrapper.offsetLeft;
+            dragStartTop = cameraWrapper.offsetTop;
+
+            e.preventDefault();
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const left = dragStartLeft + (e.clientX - dragStartX);
+                const top = dragStartTop + (e.clientY - dragStartY);
+
+                cameraWrapper.style.left = left + 'px';
+                cameraWrapper.style.top = top + 'px';
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        /* =========================
+           摄像头窗口右下角缩放
+        ========================= */
+        let isResizing = false;
+        let resizeStartX = 0;
+        let resizeStartY = 0;
+        let resizeStartWidth = 0;
+        let resizeStartHeight = 0;
+
+        resizeHandle.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            resizeStartX = e.clientX;
+            resizeStartY = e.clientY;
+            resizeStartWidth = cameraWrapper.clientWidth;
+            resizeStartHeight = cameraWrapper.clientHeight;
+
+            e.preventDefault();
+            e.stopPropagation();
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (isResizing) {
+                const width = Math.max(150, resizeStartWidth + (e.clientX - resizeStartX));
+                const height = Math.max(110, resizeStartHeight + (e.clientY - resizeStartY));
+
+                cameraWrapper.style.width = width + 'px';
+                cameraWrapper.style.height = height + 'px';
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            isResizing = false;
+        });
+    </script>
+</body>
+</html>
