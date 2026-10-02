@@ -1,0 +1,1714 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="format-detection" content="telephone=no">
+    <title>合唱指挥学习辅助播放器——沈屹设计制作</title>
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --primary-hover: #0069d9;
+            --bg-color: #121212;
+            --panel-bg: rgba(24, 26, 32, 0.82);
+            --btn-bg: rgba(255, 255, 255, 0.10);
+            --btn-bg-hover: rgba(255, 255, 255, 0.18);
+            --btn-active: #007bff;
+            --btn-danger: #dc3545;
+            --border-color: rgba(255, 255, 255, 0.14);
+            --text-color: #e8eaed;
+            --text-dim: #9aa0a6;
+        }
+
+        * { -webkit-tap-highlight-color: transparent; }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+            overflow: hidden;
+            color: var(--text-color);
+        }
+
+        /* 顶部控制栏（两行布局，移动端自适应） */
+        #control-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            max-height: 55vh;
+            overflow-y: auto;
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 8px 12px;
+            padding-top: 8px;
+            padding-bottom: calc(8px + env(safe-area-inset-bottom));
+            box-sizing: border-box;
+            z-index: 9999;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        #control-bar.is-hidden { display: none; }
+
+        #quick-control {
+            position: fixed;
+            right: 12px;
+            bottom: calc(12px + env(safe-area-inset-bottom));
+            z-index: 10000;
+            touch-action: none;
+        }
+
+        #quick-control[hidden], #quick-actions[hidden] { display: none; }
+
+        #quick-control-toggle, .quick-action {
+            display: grid;
+            place-items: center;
+            width: 48px;
+            height: 48px;
+            padding: 0;
+            border: 1px solid var(--border-color);
+            border-radius: 50%;
+            background: rgba(24, 26, 32, 0.94);
+            color: var(--text-color);
+            font-size: 20px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        #quick-control-toggle { cursor: grab; }
+        #quick-control-toggle:active { cursor: grabbing; }
+
+        #quick-actions {
+            position: absolute;
+            right: 0;
+            bottom: calc(100% + 8px);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            background: rgba(24, 26, 32, 0.94);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        #quick-actions.opens-down {
+            top: calc(100% + 8px);
+            bottom: auto;
+        }
+
+        .quick-action { cursor: pointer; }
+        .quick-action.active { background: var(--btn-active); }
+
+        .bar-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .menu-hide-row { justify-content: center; }
+
+        #hide-menu-btn { min-width: 112px; }
+
+        #video-url-input {
+            flex: 1;
+            min-width: 140px;
+            height: 36px;
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px solid var(--border-color);
+            color: #fff;
+            padding: 0 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        #video-url-input:focus { border-color: var(--primary-color); }
+        #video-url-input::placeholder { color: var(--text-dim); }
+
+        #network-video-panel {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        #network-video-panel[hidden] { display: none; }
+
+        #more-controls[hidden] { display: none; }
+
+        input[type="range"] {
+            opacity: 0.15;
+            transition: opacity 0.15s ease;
+        }
+
+        input[type="range"].is-touch-adjusting { opacity: 1; }
+
+        #network-video-toggle::after {
+            content: '+';
+            margin-left: 8px;
+        }
+
+        #network-video-toggle[aria-expanded="true"]::after { content: '\2212'; }
+
+        .control-label, .control-hint, #video-scale-output, #camera-opacity-output {
+            color: var(--text-dim);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        #camera-opacity-range {
+            width: min(28vw, 150px);
+            min-width: 80px;
+            accent-color: var(--primary-color);
+            touch-action: pan-y;
+        }
+
+        .control-select {
+            min-height: 34px;
+            padding: 0 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: rgba(0, 0, 0, 0.45);
+            color: var(--text-color);
+            font-size: 12px;
+        }
+
+        .control-select:disabled { opacity: 0.55; }
+
+        .btn {
+            background: var(--btn-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            padding: 7px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            line-height: 1;
+            white-space: nowrap;
+            transition: background 0.2s, border-color 0.2s, color 0.2s;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        .btn:hover { background: var(--btn-bg-hover); }
+        .btn:active { transform: scale(0.97); }
+
+        .btn.primary {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+            color: #fff;
+            font-weight: 600;
+        }
+        .btn.primary:hover { background: var(--primary-hover); }
+
+        /* 开关型按钮的激活态 */
+        .btn.active {
+            background: var(--btn-active);
+            border-color: var(--btn-active);
+            color: #fff;
+        }
+        .btn.active.danger {
+            background: var(--btn-danger);
+            border-color: var(--btn-danger);
+        }
+
+        /* 主视频播放区域（铺满全屏，控制栏悬浮于其上） */
+        #video-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            overflow: hidden;
+        }
+
+        #video-scale-control {
+            position: absolute;
+            top: calc(12px + env(safe-area-inset-top));
+            left: 50%;
+            z-index: 1002;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            max-width: calc(100vw - 16px);
+            padding: 5px 8px;
+            transform: translateX(-50%);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.72);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+
+        #video-scale-control .control-label,
+        #video-scale-control #video-scale-output { color: #fff; }
+
+        .video-scale-action {
+            display: grid;
+            place-items: center;
+            flex: 0 0 34px;
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--btn-bg);
+            color: var(--text-color);
+            font-size: 17px;
+            touch-action: manipulation;
+        }
+
+        .video-scale-action.active { background: var(--btn-active); }
+
+        #video-scale-range {
+            flex: 1 1 auto;
+            width: min(32vw, 140px);
+            min-width: 70px;
+            accent-color: var(--primary-color);
+            touch-action: pan-y;
+        }
+
+        #main-video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+            transform: translate(var(--video-offset-x, 0px), var(--video-offset-y, 0px)) scale(var(--video-scale, 1));
+            transform-origin: center;
+            touch-action: none;
+        }
+
+        #main-video::-webkit-media-controls-fullscreen-button { display: none; }
+
+        #video-container.is-pannable #main-video {
+            touch-action: none;
+            cursor: grab;
+        }
+
+        #video-container.is-panning #main-video { cursor: grabbing; }
+
+        .video-mirror {
+            transform: scaleX(-1);
+        }
+
+        #main-video.video-mirror {
+            transform: translate(var(--video-offset-x, 0px), var(--video-offset-y, 0px)) scaleX(-1) scale(var(--video-scale, 1));
+        }
+
+        /* 嵌入播放器容器 */
+        #embed-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            background: #000;
+            z-index: 1;
+        }
+
+        #embed-container iframe {
+            width: 100%;
+            height: 100%;
+            border: 0;
+            display: block;
+        }
+
+        #video-pan-handle {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            z-index: 2;
+            display: none;
+            transform: translateX(-50%);
+            padding: 7px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: rgba(0, 0, 0, 0.75);
+            color: #fff;
+            font-size: 12px;
+            white-space: nowrap;
+            touch-action: none;
+        }
+
+        #video-container.is-pannable.is-embedded #video-pan-handle {
+            display: inline-flex;
+        }
+
+        #embed-container {
+            transform: translate(var(--video-offset-x, 0px), var(--video-offset-y, 0px)) scale(var(--video-scale, 1));
+            transform-origin: center;
+        }
+
+        /* 可拖拽缩放的摄像头图层 */
+        #camera-wrapper {
+            position: absolute;
+            top: 15%;
+            left: 8%;
+            --camera-base-width: 320px;
+            --camera-base-height: 240px;
+            width: var(--camera-base-width);
+            height: var(--camera-base-height);
+            min-width: 0;
+            min-height: 0;
+            background: rgba(0, 0, 0, 0.4);
+            border: 2px solid rgba(255, 255, 255, 0.35);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            overflow: visible;
+            z-index: 999;
+            display: none; /* 默认隐藏 */
+            cursor: move;
+            touch-action: none; /* 关键：阻止页面滚动，让指针事件接管拖拽 */
+        }
+
+        /* 摄像头视频流，设置半透明度 */
+        #camera-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 8px;
+            opacity: 0.6; /* 半透明叠加效果 */
+            pointer-events: none; /* 防止干扰拖拽 */
+        }
+
+        #camera-opacity-control {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            z-index: 1002;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            background: rgba(0, 0, 0, 0.72);
+            color: #fff;
+            font-size: 11px;
+            touch-action: manipulation;
+        }
+
+        #camera-opacity-control input {
+            flex: 1;
+            width: auto;
+            min-width: 0;
+            accent-color: var(--primary-color);
+            touch-action: pan-x;
+        }
+
+        #camera-opacity-control output { min-width: 32px; text-align: right; }
+
+        .window-resize-handle {
+            position: absolute;
+            z-index: 1005;
+            width: 18px;
+            height: 18px;
+            background: linear-gradient(135deg, transparent 38%, rgba(255, 255, 255, 0.85) 42%, rgba(255, 255, 255, 0.85) 54%, transparent 58%);
+            touch-action: none;
+        }
+
+        .window-resize-handle[data-corner="nw"] { top: -14px; left: -14px; cursor: nwse-resize; }
+        .window-resize-handle[data-corner="ne"] { top: -14px; right: -14px; cursor: nesw-resize; }
+        .window-resize-handle[data-corner="sw"] { bottom: -14px; left: -14px; cursor: nesw-resize; }
+        .window-resize-handle[data-corner="se"] { right: -14px; bottom: -14px; cursor: nwse-resize; }
+
+        #camera-window-mirror {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            z-index: 1003;
+            display: grid;
+            place-items: center;
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: rgba(0, 0, 0, 0.72);
+            color: #fff;
+            font-size: 18px;
+            touch-action: manipulation;
+        }
+
+        #camera-window-mirror.active { background: var(--btn-active); }
+
+        .camera-mirror {
+            transform: scaleX(-1);
+        }
+
+        /* 可拖拽的悬浮 PNG 图片图层 */
+        #image-wrapper {
+            position: absolute;
+            top: 20%;
+            left: 45%;
+            box-sizing: border-box;
+            background: transparent;
+            border: 2px dashed rgba(255, 255, 255, 0.45);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            overflow: visible;
+            z-index: 998;
+            display: none; /* 默认隐藏 */
+            cursor: move;
+            touch-action: none;
+        }
+
+        #image-opacity-control {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            z-index: 1002;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            background: rgba(0, 0, 0, 0.72);
+            color: #fff;
+            font-size: 11px;
+            touch-action: manipulation;
+        }
+
+        #image-opacity-control input {
+            flex: 1;
+            width: auto;
+            min-width: 0;
+            accent-color: var(--primary-color);
+            touch-action: pan-x;
+        }
+
+        #image-opacity-control output { min-width: 32px; text-align: right; }
+
+        #image-window-mirror {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            z-index: 1003;
+            display: grid;
+            place-items: center;
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: rgba(0, 0, 0, 0.72);
+            color: #fff;
+            font-size: 18px;
+            touch-action: manipulation;
+        }
+
+        #image-window-mirror.active { background: var(--btn-active); }
+
+        #overlay-image {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 8px;
+            pointer-events: none; /* 防止干扰拖拽 */
+        }
+
+        .image-mirror {
+            transform: scaleX(-1);
+        }
+
+        /* 拖放本地视频文件的提示遮罩 */
+        #drop-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 10000;
+            background: rgba(0, 20, 50, 0.75);
+            border: 3px dashed var(--primary-color);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 12px;
+            color: #fff;
+            font-size: 20px;
+            pointer-events: none;
+        }
+
+        #drop-overlay .drop-icon { font-size: 52px; }
+
+        /* 轻提示 Toast */
+        #toast {
+            position: absolute;
+            left: 50%;
+            bottom: 24px;
+            transform: translateX(-50%) translateY(20px);
+            background: rgba(0, 0, 0, 0.85);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 24px;
+            font-size: 14px;
+            z-index: 10001;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s, transform 0.25s;
+            max-width: 86vw;
+            text-align: center;
+        }
+
+        #toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* 移动端适配 */
+        @media (max-width: 768px) {
+            .btn {
+                padding: 8px 10px;
+                font-size: 12px;
+            }
+            #video-url-input {
+                height: 34px;
+                font-size: 13px;
+            }
+            #camera-wrapper {
+                --camera-base-width: 220px;
+                --camera-base-height: 165px;
+                width: var(--camera-base-width);
+                height: var(--camera-base-height);
+            }
+        }
+
+        @media (max-width: 480px) {
+            #control-bar { padding: 6px 8px; padding-bottom: calc(6px + env(safe-area-inset-bottom)); gap: 6px; }
+            .bar-row { gap: 6px; }
+            .btn { padding: 7px 8px; font-size: 11px; }
+            #video-url-input { min-width: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 底部控制栏 -->
+    <div id="control-bar">
+        <div class="bar-row">
+            <button class="btn" id="network-video-toggle" type="button" aria-expanded="false" aria-controls="network-video-panel">网络视频</button>
+            <button class="btn" id="local-file-btn">本地视频</button>
+            <button class="btn" id="toggle-image-btn">🖼 上传图片</button>
+            <button class="btn" id="more-controls-toggle" type="button" aria-expanded="false" aria-controls="more-controls">更多</button>
+        </div>
+        <div id="network-video-panel" class="bar-row" hidden>
+            <input type="text" id="video-url-input"
+                   placeholder="粘贴 YouTube / Bilibili / MP4 / HLS 链接"
+                   autocomplete="off">
+            <button class="btn primary" id="load-video-btn">开始播放</button>
+        </div>
+        <div id="more-controls" class="bar-row" hidden>
+            <button class="btn" id="mirror-image-btn">图片镜像</button>
+            <button class="btn" id="toggle-camera-btn">开启摄像头</button>
+            <button class="btn" id="mirror-camera-btn">摄像头镜像</button>
+            <button class="btn" id="mirror-video-btn">视频镜像</button>
+        </div>
+        <div class="bar-row menu-hide-row">
+            <button class="btn" id="hide-menu-btn" aria-controls="control-bar">隐藏菜单</button>
+        </div>
+    </div>
+    <div id="quick-control" hidden>
+        <div id="quick-actions" hidden>
+            <button class="quick-action" id="quick-image-btn" type="button" title="显示或隐藏图片" aria-label="显示或隐藏图片" aria-pressed="false">🖼</button>
+            <button class="quick-action" id="quick-camera-btn" type="button" title="开启或关闭摄像头" aria-label="开启或关闭摄像头" aria-pressed="false">📷</button>
+            <button class="quick-action" id="quick-camera-mirror-btn" type="button" title="摄像头镜像" aria-label="切换摄像头镜像" aria-pressed="false">↔</button>
+            <button class="quick-action" id="quick-video-mirror-btn" type="button" title="视频镜像" aria-label="切换视频镜像" aria-pressed="false">⇄</button>
+            <button class="quick-action" id="show-menu-btn" type="button" title="显示菜单" aria-label="显示菜单">☰</button>
+        </div>
+        <button id="quick-control-toggle" type="button" title="快捷控制" aria-label="打开快捷控制" aria-expanded="false">•••</button>
+    </div>
+
+    <!-- 播放器核心容器 -->
+    <div id="video-container">
+        <div id="video-scale-control">
+            <button class="video-scale-action" id="video-scale-image-btn" type="button" title="显示或隐藏图片" aria-label="显示或隐藏图片" aria-pressed="false">🖼</button>
+            <button class="video-scale-action" id="video-scale-camera-btn" type="button" title="开启或关闭摄像头" aria-label="开启或关闭摄像头" aria-pressed="false">📷</button>
+            <label class="control-label" for="video-scale-range">视频尺寸</label>
+            <input id="video-scale-range" type="range" min="50" max="500" step="5" value="100" aria-label="调整视频尺寸">
+            <output id="video-scale-output" for="video-scale-range">100%</output>
+            <button class="video-scale-action" id="video-scale-mirror-btn" type="button" title="视频镜像" aria-label="切换视频镜像" aria-pressed="false">⇄</button>
+        </div>
+        <!-- 主视频（playsinline 保证 iOS 内联播放） -->
+        <video id="main-video" controls controlslist="nofullscreen" autoplay loop playsinline webkit-playsinline></video>
+
+        <!-- 嵌入播放器容器：YouTube / Bilibili / Vimeo 等 -->
+        <div id="embed-container">
+            <button id="video-pan-handle" type="button" aria-label="拖动视频位置">↔ 拖动画面</button>
+        </div>
+
+        <!-- 悬浮摄像头图层 -->
+        <div id="camera-wrapper">
+            <video id="camera-video" autoplay playsinline muted webkit-playsinline></video>
+            <div id="camera-opacity-control">
+                <label for="camera-opacity-range">透明度</label>
+                <input id="camera-opacity-range" type="range" min="0" max="100" step="5" value="60" aria-label="调整摄像头透明度">
+                <output id="camera-opacity-output" for="camera-opacity-range">60%</output>
+            </div>
+            <button id="camera-window-mirror" type="button" title="摄像头镜像" aria-label="切换摄像头镜像" aria-pressed="false">↔</button>
+            <div class="window-resize-handle" data-corner="nw" aria-hidden="true"></div>
+            <div class="window-resize-handle" data-corner="ne" aria-hidden="true"></div>
+            <div class="window-resize-handle" data-corner="sw" aria-hidden="true"></div>
+            <div class="window-resize-handle" data-corner="se" aria-hidden="true"></div>
+        </div>
+
+        <!-- 悬浮 PNG 图片图层 -->
+        <div id="image-wrapper">
+            <img id="overlay-image" alt="悬浮图片">
+            <div id="image-opacity-control">
+                <label for="image-opacity-range">透明度</label>
+                <input id="image-opacity-range" type="range" min="0" max="100" step="5" value="60" aria-label="调整图片透明度">
+                <output id="image-opacity-output" for="image-opacity-range">60%</output>
+            </div>
+            <button id="image-window-mirror" type="button" title="图片镜像" aria-label="切换图片镜像" aria-pressed="false">↔</button>
+            <div class="window-resize-handle" data-corner="nw" aria-hidden="true"></div>
+            <div class="window-resize-handle" data-corner="ne" aria-hidden="true"></div>
+            <div class="window-resize-handle" data-corner="sw" aria-hidden="true"></div>
+            <div class="window-resize-handle" data-corner="se" aria-hidden="true"></div>
+        </div>
+    </div>
+
+    <!-- 拖放本地视频提示遮罩 -->
+    <div id="drop-overlay">
+        <div class="drop-icon">📥</div>
+        <div>松开即可播放本地视频文件</div>
+    </div>
+
+    <!-- 轻提示 -->
+    <div id="toast"></div>
+
+    <!-- 隐藏的文件选择框 -->
+    <input type="file" id="image-file-input" accept="image/*" style="display:none">
+    <input type="file" id="local-video-input"
+           accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-matroska,video/3gpp,video/3gpp2,video/x-msvideo,video/*"
+           style="display:none">
+
+    <script>
+        // =========================
+        // DOM 元素获取
+        // =========================
+        const videoUrlInput = document.getElementById('video-url-input');
+        const loadVideoBtn = document.getElementById('load-video-btn');
+        const networkVideoToggle = document.getElementById('network-video-toggle');
+        const networkVideoPanel = document.getElementById('network-video-panel');
+        const moreControlsToggle = document.getElementById('more-controls-toggle');
+        const moreControls = document.getElementById('more-controls');
+        const localFileBtn = document.getElementById('local-file-btn');
+        const localVideoInput = document.getElementById('local-video-input');
+        const controlBar = document.getElementById('control-bar');
+        const hideMenuBtn = document.getElementById('hide-menu-btn');
+        const showMenuBtn = document.getElementById('show-menu-btn');
+        const quickControl = document.getElementById('quick-control');
+        const quickActions = document.getElementById('quick-actions');
+        const quickControlToggle = document.getElementById('quick-control-toggle');
+        const quickImageBtn = document.getElementById('quick-image-btn');
+        const quickCameraBtn = document.getElementById('quick-camera-btn');
+        const quickCameraMirrorBtn = document.getElementById('quick-camera-mirror-btn');
+        const quickVideoMirrorBtn = document.getElementById('quick-video-mirror-btn');
+        const videoScaleRange = document.getElementById('video-scale-range');
+        const videoScaleOutput = document.getElementById('video-scale-output');
+        const videoScaleImageBtn = document.getElementById('video-scale-image-btn');
+        const videoScaleCameraBtn = document.getElementById('video-scale-camera-btn');
+        const videoScaleMirrorBtn = document.getElementById('video-scale-mirror-btn');
+        const cameraOpacityRange = document.getElementById('camera-opacity-range');
+        const cameraOpacityOutput = document.getElementById('camera-opacity-output');
+        const toggleCameraBtn = document.getElementById('toggle-camera-btn');
+        const mirrorVideoBtn = document.getElementById('mirror-video-btn');
+        const mirrorCameraBtn = document.getElementById('mirror-camera-btn');
+        const dropOverlay = document.getElementById('drop-overlay');
+        const toastEl = document.getElementById('toast');
+
+        const mainVideo = document.getElementById('main-video');
+        const videoContainer = document.getElementById('video-container');
+        const videoPanHandle = document.getElementById('video-pan-handle');
+        const cameraWrapper = document.getElementById('camera-wrapper');
+        const cameraVideo = document.getElementById('camera-video');
+        const cameraOpacityControl = document.getElementById('camera-opacity-control');
+        const cameraWindowMirrorBtn = document.getElementById('camera-window-mirror');
+        const embedContainer = document.getElementById('embed-container');
+        const toggleImageBtn = document.getElementById('toggle-image-btn');
+        const mirrorImageBtn = document.getElementById('mirror-image-btn');
+        const imageFileInput = document.getElementById('image-file-input');
+        const imageWrapper = document.getElementById('image-wrapper');
+        const overlayImage = document.getElementById('overlay-image');
+        const imageOpacityControl = document.getElementById('image-opacity-control');
+        const imageOpacityRange = document.getElementById('image-opacity-range');
+        const imageOpacityOutput = document.getElementById('image-opacity-output');
+        const imageWindowMirrorBtn = document.getElementById('image-window-mirror');
+
+        document.querySelectorAll('input[type="range"]').forEach((range) => {
+            range.addEventListener('pointerdown', (e) => {
+                if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+                    range.classList.add('is-touch-adjusting');
+                }
+            });
+
+            const restoreOpacity = (e) => {
+                if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+                    range.classList.remove('is-touch-adjusting');
+                }
+            };
+
+            range.addEventListener('pointerup', restoreOpacity);
+            range.addEventListener('pointercancel', restoreOpacity);
+            range.addEventListener('lostpointercapture', restoreOpacity);
+            range.addEventListener('blur', () => range.classList.remove('is-touch-adjusting'));
+        });
+
+        let cameraStream = null;
+        let videoMirror = false;
+        let imageLoaded = false;
+        let imageBaseSize = null;
+        let localObjectUrl = null;
+
+        // =========================
+        // 轻提示 Toast
+        // =========================
+        let toastTimer = null;
+        function toast(msg, duration = 2600) {
+            toastEl.textContent = msg;
+            toastEl.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toastEl.classList.remove('show'), duration);
+        }
+
+        // =========================
+        // 开关型按钮状态切换
+        // =========================
+        function setToggleBtn(btn, on, onText, offText) {
+            btn.classList.toggle('active', on);
+            btn.classList.toggle('danger', on);
+            btn.textContent = on ? onText : offText;
+        }
+
+        function updateQuickActionStates() {
+            const imageOn = imageLoaded && imageWrapper.style.display === 'block';
+            const cameraOn = cameraWrapper.style.display === 'block';
+            const cameraMirrored = cameraVideo.classList.contains('camera-mirror');
+
+            quickImageBtn.classList.toggle('active', imageOn);
+            quickImageBtn.setAttribute('aria-pressed', String(imageOn));
+            quickCameraBtn.classList.toggle('active', cameraOn);
+            quickCameraBtn.setAttribute('aria-pressed', String(cameraOn));
+            videoScaleCameraBtn.classList.toggle('active', cameraOn);
+            videoScaleCameraBtn.setAttribute('aria-pressed', String(cameraOn));
+            quickCameraMirrorBtn.classList.toggle('active', cameraMirrored);
+            quickCameraMirrorBtn.setAttribute('aria-pressed', String(cameraMirrored));
+            cameraWindowMirrorBtn.classList.toggle('active', cameraMirrored);
+            cameraWindowMirrorBtn.setAttribute('aria-pressed', String(cameraMirrored));
+            quickVideoMirrorBtn.classList.toggle('active', videoMirror);
+            quickVideoMirrorBtn.setAttribute('aria-pressed', String(videoMirror));
+            videoScaleMirrorBtn.classList.toggle('active', videoMirror);
+            videoScaleMirrorBtn.setAttribute('aria-pressed', String(videoMirror));
+            videoScaleImageBtn.classList.toggle('active', imageOn);
+            videoScaleImageBtn.setAttribute('aria-pressed', String(imageOn));
+        }
+
+        /* =========================
+           解析 YouTube 视频 ID
+        ========================= */
+        function getYouTubeId(url) {
+            try {
+                const u = new URL(url);
+                const host = u.hostname.toLowerCase();
+
+                if (host === 'youtu.be') {
+                    const id = u.pathname.slice(1).split('/')[0];
+                    if (/^[A-Za-z0-9_-]{11}$/.test(id)) return id;
+                    return null;
+                }
+
+                if (
+                    host === 'youtube.com' ||
+                    host === 'www.youtube.com' ||
+                    host === 'm.youtube.com'
+                ) {
+                    if (u.pathname === '/watch') {
+                        const v = u.searchParams.get('v');
+                        if (v && /^[A-Za-z0-9_-]{11}$/.test(v)) return v;
+                    }
+
+                    const m = u.pathname.match(/\/(?:embed|shorts|v|live)\/([A-Za-z0-9_-]{11})/);
+                    if (m) return m[1];
+                }
+            } catch (e) {}
+            return null;
+        }
+
+        /* =========================
+           解析 Bilibili 链接
+           支持 BV 号和 av 号，支持 ?p=2 分P
+        ========================= */
+        function getBilibiliInfo(url) {
+            try {
+                const u = new URL(url);
+                const host = u.hostname.toLowerCase();
+
+                if (!host.includes('bilibili.com')) return null;
+
+                const p = u.searchParams.get('p');
+                let page = p ? parseInt(p, 10) : 1;
+                if (!Number.isFinite(page) || page < 1) page = 1;
+
+                let bvid = null;
+                const bv = u.pathname.match(/\/video\/(BV[0-9A-Za-z]+)/);
+                if (bv) bvid = bv[1];
+                if (!bvid && u.searchParams.get('bvid')) {
+                    bvid = u.searchParams.get('bvid');
+                }
+
+                let aid = null;
+                const av = u.pathname.match(/\/video\/av(\d+)/);
+                if (av) aid = parseInt(av[1], 10);
+                if (!aid && u.searchParams.get('aid')) {
+                    aid = parseInt(u.searchParams.get('aid'), 10);
+                }
+
+                if (!bvid && !aid) return null;
+                return { bvid, aid, page };
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function extractVideoUrl(value) {
+            const match = value.match(/https?:\/\/[^\s<>"']+/i);
+            if (!match) return value.trim();
+            return match[0].replace(/[),.;，。！？；）】]+$/u, '');
+        }
+
+        async function resolveBilibiliShortLink(url) {
+            let parsedUrl;
+            try {
+                parsedUrl = new URL(url);
+            } catch (error) {
+                return url;
+            }
+
+            const shortLinkHosts = ['b23.tv', 'www.b23.tv', 'bili2233.cn', 'www.bili2233.cn'];
+            if (!shortLinkHosts.includes(parsedUrl.hostname.toLowerCase())) return url;
+
+            try {
+                const response = await fetch(parsedUrl.href, { redirect: 'follow' });
+                if (!response.ok || !getBilibiliInfo(response.url)) {
+                    throw new Error('无效的 Bilibili 短链');
+                }
+                return response.url;
+            } catch (error) {
+                throw new Error('无法自动解析 Bilibili 分享短链，请检查网络或粘贴完整视频链接。');
+            }
+        }
+
+        /* =========================
+           解析 Vimeo 视频 ID
+        ========================= */
+        function getVimeoId(url) {
+            try {
+                const u = new URL(url);
+                if (u.hostname.toLowerCase().includes('vimeo.com')) {
+                    const m = u.pathname.match(/\/(\d+)/);
+                    if (m) return m[1];
+                }
+            } catch (e) {}
+            return null;
+        }
+
+        /* =========================
+           显示嵌入播放器
+        ========================= */
+        function showEmbed(src, title) {
+            mainVideo.pause();
+            mainVideo.removeAttribute('src');
+            mainVideo.load();
+            mainVideo.style.display = 'none';
+            videoContainer.classList.add('is-embedded');
+
+            embedContainer.querySelectorAll('iframe').forEach(iframe => iframe.remove());
+
+            const iframe = document.createElement('iframe');
+            iframe.src = src;
+            iframe.title = title;
+            iframe.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture; clipboard-write';
+            iframe.allowFullscreen = true;
+
+            embedContainer.appendChild(iframe);
+            embedContainer.style.display = 'block';
+
+            applyVideoMirror();
+        }
+
+        /* =========================
+           显示原生 video 播放器
+        ========================= */
+        function showDirect(url) {
+            embedContainer.innerHTML = '';
+            embedContainer.appendChild(videoPanHandle);
+            embedContainer.style.display = 'none';
+            videoContainer.classList.remove('is-embedded');
+
+            mainVideo.style.display = 'block';
+            mainVideo.src = url;
+            mainVideo.load();
+            mainVideo.play().catch(e => console.log("自动播放被阻拦，需手动点击播放:", e));
+
+            applyVideoMirror();
+        }
+
+        /* =========================
+           视频镜像状态应用
+        ========================= */
+        function applyVideoMirror() {
+            mainVideo.classList.toggle('video-mirror', videoMirror);
+
+            const iframe = embedContainer.querySelector('iframe');
+            if (iframe) {
+                iframe.classList.toggle('video-mirror', videoMirror);
+            }
+        }
+
+        /* =========================
+           根据 URL 自动选择播放器
+        ========================= */
+        async function loadVideo() {
+            let url = extractVideoUrl(videoUrlInput.value);
+            if (!url) {
+                alert("请输入有效的视频地址");
+                return;
+            }
+
+            try {
+                const resolvedUrl = await resolveBilibiliShortLink(url);
+                if (resolvedUrl !== url) {
+                    url = resolvedUrl;
+                    videoUrlInput.value = resolvedUrl;
+                    toast('已转换 Bilibili 分享短链');
+                }
+            } catch (error) {
+                toast(error.message, 4000);
+                return;
+            }
+
+            // 1. YouTube
+            const youtubeId = getYouTubeId(url);
+            if (youtubeId) {
+                showEmbed(
+                    `https://www.youtube.com/embed/${encodeURIComponent(youtubeId)}?rel=0&modestbranding=1&playsinline=1`,
+                    "YouTube"
+                );
+                return;
+            }
+
+            // 2. Bilibili
+            const bili = getBilibiliInfo(url);
+            if (bili) {
+                let src = "https://player.bilibili.com/player.html?";
+                if (bili.bvid) {
+                    src += `bvid=${encodeURIComponent(bili.bvid)}&`;
+                } else {
+                    src += `aid=${bili.aid}&`;
+                }
+                src += `page=${bili.page}&autoplay=1`;
+
+                showEmbed(src, "Bilibili");
+                return;
+            }
+
+            // 3. Vimeo
+            const vimeoId = getVimeoId(url);
+            if (vimeoId) {
+                showEmbed(`https://player.vimeo.com/video/${vimeoId}`, "Vimeo");
+                return;
+            }
+
+            // 4. 直接视频地址：MP4 / WebM / HLS 等
+            if (/\.(mp4|webm|ogg|ogv|mov|m4v|m3u8)(\?|#|$)/i.test(url)) {
+                showDirect(url);
+                return;
+            }
+
+            // 5. 其他网址兜底：尝试 iframe 嵌入
+            // 注意：很多网站会禁止被 iframe 嵌入，实际能否显示取决于目标网站策略
+            showEmbed(url, "Web 页面");
+        }
+
+        loadVideoBtn.addEventListener('click', loadVideo);
+        networkVideoToggle.addEventListener('click', () => {
+            const expanded = networkVideoToggle.getAttribute('aria-expanded') === 'true';
+            networkVideoPanel.hidden = expanded;
+            networkVideoToggle.setAttribute('aria-expanded', String(!expanded));
+        });
+        moreControlsToggle.addEventListener('click', () => {
+            const expanded = moreControlsToggle.getAttribute('aria-expanded') === 'true';
+            moreControls.hidden = expanded;
+            moreControlsToggle.setAttribute('aria-expanded', String(!expanded));
+        });
+        videoUrlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') loadVideo();
+        });
+
+        hideMenuBtn.addEventListener('click', () => {
+            controlBar.classList.add('is-hidden');
+            quickControl.hidden = false;
+            quickActions.hidden = true;
+            quickControlToggle.setAttribute('aria-expanded', 'false');
+            updateQuickActionStates();
+        });
+
+        showMenuBtn.addEventListener('click', () => {
+            controlBar.classList.remove('is-hidden');
+            quickControl.hidden = true;
+            quickActions.hidden = true;
+            quickControlToggle.setAttribute('aria-expanded', 'false');
+        });
+
+        quickControlToggle.addEventListener('click', (e) => {
+            if (suppressQuickToggleClick) {
+                e.preventDefault();
+                suppressQuickToggleClick = false;
+                return;
+            }
+
+            quickActions.hidden = !quickActions.hidden;
+            quickControlToggle.setAttribute('aria-expanded', String(!quickActions.hidden));
+            const actionsHeight = quickActions.getBoundingClientRect().height;
+            quickActions.classList.toggle('opens-down', quickControl.getBoundingClientRect().top < actionsHeight + 16);
+            updateQuickActionStates();
+        });
+
+        quickImageBtn.addEventListener('click', () => toggleImageBtn.click());
+        quickCameraBtn.addEventListener('click', () => toggleCameraBtn.click());
+        quickCameraMirrorBtn.addEventListener('click', () => mirrorCameraBtn.click());
+        quickVideoMirrorBtn.addEventListener('click', () => mirrorVideoBtn.click());
+        videoScaleImageBtn.addEventListener('click', () => toggleImageBtn.click());
+        videoScaleCameraBtn.addEventListener('click', () => toggleCameraBtn.click());
+        videoScaleMirrorBtn.addEventListener('click', () => mirrorVideoBtn.click());
+
+        let quickControlDrag = null;
+        let suppressQuickToggleClick = false;
+        let quickToggleClickTimer = null;
+
+        quickControlToggle.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+            const rect = quickControl.getBoundingClientRect();
+            quickControlDrag = {
+                pointerId: e.pointerId,
+                startX: e.clientX,
+                startY: e.clientY,
+                left: rect.left,
+                top: rect.top,
+                moved: false
+            };
+            quickControlToggle.setPointerCapture(e.pointerId);
+            e.preventDefault();
+        });
+
+        quickControlToggle.addEventListener('pointermove', (e) => {
+            if (!quickControlDrag || e.pointerId !== quickControlDrag.pointerId) return;
+
+            const deltaX = e.clientX - quickControlDrag.startX;
+            const deltaY = e.clientY - quickControlDrag.startY;
+            if (Math.hypot(deltaX, deltaY) > 4) quickControlDrag.moved = true;
+            if (!quickControlDrag.moved) return;
+
+            quickActions.hidden = true;
+            quickControlToggle.setAttribute('aria-expanded', 'false');
+
+            const maxLeft = window.innerWidth - quickControl.offsetWidth - 8;
+            const maxTop = window.innerHeight - quickControl.offsetHeight - 8;
+            quickControl.style.left = Math.max(8, Math.min(quickControlDrag.left + deltaX, maxLeft)) + 'px';
+            quickControl.style.top = Math.max(8, Math.min(quickControlDrag.top + deltaY, maxTop)) + 'px';
+            quickControl.style.right = 'auto';
+            quickControl.style.bottom = 'auto';
+            e.preventDefault();
+        });
+
+        function finishQuickControlDrag(e) {
+            if (!quickControlDrag || e.pointerId !== quickControlDrag.pointerId) return;
+
+            if (quickControlDrag.moved) {
+                suppressQuickToggleClick = true;
+                clearTimeout(quickToggleClickTimer);
+                quickToggleClickTimer = setTimeout(() => {
+                    suppressQuickToggleClick = false;
+                }, 400);
+            }
+            quickControlDrag = null;
+        }
+
+        quickControlToggle.addEventListener('pointerup', finishQuickControlDrag);
+        quickControlToggle.addEventListener('pointercancel', finishQuickControlDrag);
+
+        function setVideoScale(percent) {
+            const boundedPercent = Math.max(50, Math.min(500, Math.round(percent / 5) * 5));
+            videoScaleRange.value = String(boundedPercent);
+            const scale = boundedPercent / 100;
+            videoContainer.style.setProperty('--video-scale', scale);
+            videoScaleOutput.value = boundedPercent + '%';
+            videoContainer.classList.toggle('is-pannable', scale > 1);
+            if (scale <= 1) {
+                videoContainer.style.setProperty('--video-offset-x', '0px');
+                videoContainer.style.setProperty('--video-offset-y', '0px');
+            }
+        }
+
+        videoScaleRange.addEventListener('input', () => {
+            setVideoScale(Number(videoScaleRange.value));
+        });
+
+        const videoPointers = new Map();
+        let videoGesture = null;
+        let videoClickSuppressTimer = null;
+        let suppressNextVideoClick = false;
+
+        function getVideoPointerDistance(first, second) {
+            return Math.hypot(second.x - first.x, second.y - first.y);
+        }
+
+        function startVideoPinch() {
+            const pointers = Array.from(videoPointers.values());
+            if (pointers.length < 2) return;
+            videoGesture = {
+                type: 'pinch',
+                startDistance: Math.max(1, getVideoPointerDistance(pointers[0], pointers[1])),
+                startScale: Number(videoScaleRange.value),
+                moved: false
+            };
+        }
+
+        function startVideoPan(pointerId) {
+            const pointer = videoPointers.get(pointerId);
+            if (!pointer || Number(videoScaleRange.value) <= 100) {
+                videoGesture = null;
+                return;
+            }
+            videoGesture = {
+                type: 'pan',
+                pointerId,
+                startX: pointer.x,
+                startY: pointer.y,
+                offsetX: Number.parseFloat(videoContainer.style.getPropertyValue('--video-offset-x')) || 0,
+                offsetY: Number.parseFloat(videoContainer.style.getPropertyValue('--video-offset-y')) || 0,
+                moved: false
+            };
+        }
+
+        videoContainer.addEventListener('pointerdown', (e) => {
+            if (e.target !== mainVideo && e.target !== videoPanHandle) return;
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+            if (e.target === mainVideo && videoContainer.classList.contains('is-embedded')) return;
+            if (e.target === mainVideo) {
+                const videoRect = mainVideo.getBoundingClientRect();
+                if (e.clientY >= videoRect.bottom - 48) return;
+            }
+
+            videoPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (videoPointers.size >= 2) {
+                videoPointers.forEach((pointer, pointerId) => videoContainer.setPointerCapture(pointerId));
+                startVideoPinch();
+                e.preventDefault();
+            } else {
+                startVideoPan(e.pointerId);
+                if (videoGesture?.type === 'pan') {
+                    videoContainer.setPointerCapture(e.pointerId);
+                    e.preventDefault();
+                }
+            }
+        });
+
+        videoContainer.addEventListener('pointermove', (e) => {
+            if (!videoPointers.has(e.pointerId)) return;
+            videoPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+            if (videoGesture?.type === 'pinch') {
+                const pointers = Array.from(videoPointers.values());
+                if (pointers.length < 2) return;
+                const distance = getVideoPointerDistance(pointers[0], pointers[1]);
+                if (Math.abs(distance - videoGesture.startDistance) > 3) videoGesture.moved = true;
+                setVideoScale(videoGesture.startScale * distance / videoGesture.startDistance);
+                e.preventDefault();
+            } else if (videoGesture?.type === 'pan' && e.pointerId === videoGesture.pointerId) {
+                const pointer = videoPointers.get(e.pointerId);
+                const deltaX = pointer.x - videoGesture.startX;
+                const deltaY = pointer.y - videoGesture.startY;
+                if (Math.hypot(deltaX, deltaY) > 3) videoGesture.moved = true;
+                videoContainer.style.setProperty('--video-offset-x', (videoGesture.offsetX + deltaX) + 'px');
+                videoContainer.style.setProperty('--video-offset-y', (videoGesture.offsetY + deltaY) + 'px');
+                videoContainer.classList.add('is-panning');
+                e.preventDefault();
+            }
+        });
+
+        function finishVideoGesture(e) {
+            if (!videoPointers.has(e.pointerId)) return;
+
+            if (videoGesture?.moved) {
+                suppressNextVideoClick = true;
+                clearTimeout(videoClickSuppressTimer);
+                videoClickSuppressTimer = setTimeout(() => {
+                    suppressNextVideoClick = false;
+                }, 400);
+            }
+
+            videoPointers.delete(e.pointerId);
+            videoGesture = null;
+            videoContainer.classList.remove('is-panning');
+            if (videoPointers.size >= 2) startVideoPinch();
+            else if (videoPointers.size === 1) startVideoPan(videoPointers.keys().next().value);
+        }
+
+        videoContainer.addEventListener('pointerup', finishVideoGesture);
+        videoContainer.addEventListener('pointercancel', finishVideoGesture);
+
+        mainVideo.addEventListener('click', (e) => {
+            if (!suppressNextVideoClick) return;
+            e.preventDefault();
+            e.stopPropagation();
+            suppressNextVideoClick = false;
+            clearTimeout(videoClickSuppressTimer);
+        }, true);
+
+        cameraOpacityRange.addEventListener('input', () => {
+            cameraVideo.style.opacity = Number(cameraOpacityRange.value) / 100;
+            cameraOpacityOutput.value = cameraOpacityRange.value + '%';
+        });
+
+        /* =========================
+           本地视频文件加载
+        ========================= */
+        function loadLocalVideo() {
+            const file = localVideoInput.files[0];
+            if (!file) return;
+
+            // 释放旧的对象 URL，避免内存泄漏
+            if (localObjectUrl) {
+                URL.revokeObjectURL(localObjectUrl);
+                localObjectUrl = null;
+            }
+
+            // 创建对象 URL 并播放
+            localObjectUrl = URL.createObjectURL(file);
+            showDirect(localObjectUrl);
+            toast("已加载本地视频：" + file.name);
+        }
+
+        localFileBtn.addEventListener('click', () => {
+            localVideoInput.click();
+        });
+
+        localVideoInput.addEventListener('change', () => {
+            loadLocalVideo();
+            localVideoInput.value = '';
+        });
+
+        /* =========================
+           拖拽本地视频文件
+        ========================= */
+        function handleDropFile(file) {
+            if (!file || !file.type.startsWith('video/')) {
+                toast("请拖入视频文件");
+                return;
+            }
+            localVideoInput.files = [file];
+            loadLocalVideo();
+        }
+
+        ['dragover', 'dragenter'].forEach(evt => {
+            document.addEventListener(evt, (e) => {
+                e.preventDefault();
+                dropOverlay.style.display = 'flex';
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(evt => {
+            document.addEventListener(evt, (e) => {
+                e.preventDefault();
+                dropOverlay.style.display = 'none';
+            });
+        });
+
+        document.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const file = e.dataTransfer.files[0];
+            handleDropFile(file);
+        });
+
+        /* =========================
+           摄像头开启 / 关闭
+        ========================= */
+        toggleCameraBtn.addEventListener('click', async () => {
+            if (cameraWrapper.style.display === 'block') {
+                // 关闭摄像头
+                cameraWrapper.style.display = 'none';
+                toggleCameraBtn.textContent = '开启摄像头';
+                toggleCameraBtn.classList.remove('danger');
+                toggleCameraBtn.classList.add('secondary');
+
+                if (cameraStream) {
+                    cameraStream.getTracks().forEach(track => track.stop());
+                    cameraStream = null;
+                }
+                updateQuickActionStates();
+            } else {
+                // 开启摄像头
+                try {
+                    cameraStream = await navigator.mediaDevices.getUserMedia({
+                        video: true,
+                        audio: false
+                    });
+
+                    cameraVideo.srcObject = cameraStream;
+                    cameraVideo.classList.add('camera-mirror');
+                    cameraWrapper.style.display = 'block';
+
+                    toggleCameraBtn.textContent = '关闭摄像头';
+                    toggleCameraBtn.classList.remove('secondary');
+                    toggleCameraBtn.classList.add('danger');
+                    updateQuickActionStates();
+                } catch (err) {
+                    alert("无法开启摄像头：" + err.message);
+                    updateQuickActionStates();
+                }
+            }
+        });
+
+        toggleCameraBtn.click();
+
+        /* =========================
+           镜像按钮
+        ========================= */
+        mirrorVideoBtn.addEventListener('click', () => {
+            videoMirror = !videoMirror;
+            applyVideoMirror();
+            updateQuickActionStates();
+        });
+
+        mirrorCameraBtn.addEventListener('click', () => {
+            cameraVideo.classList.toggle('camera-mirror');
+            updateQuickActionStates();
+        });
+
+        cameraWindowMirrorBtn.addEventListener('click', () => mirrorCameraBtn.click());
+
+        /* =========================           悬浮 PNG 图片：上传 / 开关 / 镜像
+        ========================= */
+        toggleImageBtn.addEventListener('click', () => {
+            if (imageLoaded) {
+                // 已有图片：切换显示 / 隐藏
+                if (imageWrapper.style.display === 'block') {
+                    imageWrapper.style.display = 'none';
+                    toggleImageBtn.textContent = '上传图片';
+                    toggleImageBtn.classList.remove('danger');
+                    toggleImageBtn.classList.add('secondary');
+                    updateQuickActionStates();
+                } else {
+                    imageWrapper.style.display = 'block';
+                    toggleImageBtn.textContent = '隐藏图片';
+                    toggleImageBtn.classList.remove('secondary');
+                    toggleImageBtn.classList.add('danger');
+                    updateQuickActionStates();
+                }
+            } else {
+                // 尚未上传：打开文件选择框
+                imageFileInput.click();
+            }
+        });
+
+        imageFileInput.addEventListener('change', () => {
+            const file = imageFileInput.files[0];
+            if (!file) return;
+
+            if (!file.type.startsWith('image/')) {
+                alert("仅支持图片格式文件");
+                imageFileInput.value = '';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                overlayImage.onload = () => {
+                    const fitScale = Math.min(1, window.innerWidth * 0.7 / overlayImage.naturalWidth, 300 / overlayImage.naturalHeight);
+                    const width = Math.max(160, overlayImage.naturalWidth * fitScale);
+                    const height = Math.max(100, overlayImage.naturalHeight * fitScale);
+                    imageBaseSize = { width, height };
+                    imageWrapper.style.width = width + 'px';
+                    imageWrapper.style.height = height + 'px';
+                };
+                overlayImage.src = e.target.result;
+                overlayImage.style.opacity = Number(imageOpacityRange.value) / 100;
+                imageLoaded = true;
+                imageWrapper.style.display = 'block';
+                toggleImageBtn.textContent = '隐藏图片';
+                toggleImageBtn.classList.remove('secondary');
+                toggleImageBtn.classList.add('danger');
+                updateQuickActionStates();
+            };
+            reader.readAsDataURL(file);
+            imageFileInput.value = '';
+        });
+
+        function updateImageMirrorState() {
+            const mirrored = overlayImage.classList.contains('image-mirror');
+            imageWindowMirrorBtn.classList.toggle('active', mirrored);
+            imageWindowMirrorBtn.setAttribute('aria-pressed', String(mirrored));
+        }
+
+        mirrorImageBtn.addEventListener('click', () => {
+            overlayImage.classList.toggle('image-mirror');
+            updateImageMirrorState();
+        });
+
+        imageWindowMirrorBtn.addEventListener('click', () => mirrorImageBtn.click());
+
+        imageOpacityRange.addEventListener('input', () => {
+            overlayImage.style.opacity = Number(imageOpacityRange.value) / 100;
+            imageOpacityOutput.value = imageOpacityRange.value + '%';
+        });
+
+        function resizeWindowFromCorner(wrapper, gesture, pointer, minWidth, minHeight) {
+            const deltaX = pointer.x - gesture.startX;
+            const deltaY = pointer.y - gesture.startY;
+            const growsRight = gesture.resizeCorner.endsWith('e');
+            const growsDown = gesture.resizeCorner.startsWith('s');
+            const widthScale = (gesture.startWidth + (growsRight ? deltaX : -deltaX)) / gesture.startWidth;
+            const heightScale = (gesture.startHeight + (growsDown ? deltaY : -deltaY)) / gesture.startHeight;
+            const useWidth = Math.abs(deltaX / gesture.startWidth) >= Math.abs(deltaY / gesture.startHeight);
+            const scale = Math.max(Math.max(minWidth / gesture.startWidth, minHeight / gesture.startHeight), useWidth ? widthScale : heightScale);
+            const width = gesture.startWidth * scale;
+            const height = gesture.startHeight * scale;
+            const left = growsRight ? gesture.startLeft : gesture.startLeft + gesture.startWidth - width;
+            const top = growsDown ? gesture.startTop : gesture.startTop + gesture.startHeight - height;
+
+            wrapper.style.width = width + 'px';
+            wrapper.style.height = height + 'px';
+            wrapper.style.left = left + 'px';
+            wrapper.style.top = top + 'px';
+        }
+
+        /* =========================
+           图片窗口触屏/鼠标拖动与双指缩放
+        ========================= */
+        const imagePointers = new Map();
+        let imageGesture = null;
+
+        function getImagePointerDistance(first, second) {
+            return Math.hypot(second.x - first.x, second.y - first.y);
+        }
+
+        function startImageGesture() {
+            const pointers = Array.from(imagePointers.values());
+            if (pointers.length >= 2) {
+                const rect = imageWrapper.getBoundingClientRect();
+                imageGesture = {
+                    type: 'pinch',
+                    startDistance: Math.max(1, getImagePointerDistance(pointers[0], pointers[1])),
+                    startWidth: rect.width,
+                    startHeight: rect.height,
+                    startLeft: imageWrapper.offsetLeft,
+                    startTop: imageWrapper.offsetTop
+                };
+                return;
+            }
+
+            const pointer = pointers[0];
+            const rect = imageWrapper.getBoundingClientRect();
+            imageGesture = {
+                type: pointer.resizeCorner ? 'resize' : 'drag',
+                resizeCorner: pointer.resizeCorner,
+                startX: pointer.x,
+                startY: pointer.y,
+                startWidth: rect.width,
+                startHeight: rect.height,
+                startLeft: imageWrapper.offsetLeft,
+                startTop: imageWrapper.offsetTop
+            };
+        }
+
+        imageWrapper.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
+            if (imageOpacityControl.contains(e.target) || e.target === imageWindowMirrorBtn) return;
+
+            const resizeHandle = e.target.closest('.window-resize-handle');
+            imagePointers.set(e.pointerId, { x: e.clientX, y: e.clientY, resizeCorner: resizeHandle?.dataset.corner || null });
+            imageWrapper.setPointerCapture(e.pointerId);
+            startImageGesture();
+            e.preventDefault();
+        });
+
+        imageWrapper.addEventListener('pointermove', (e) => {
+            if (!imagePointers.has(e.pointerId) || !imageGesture) return;
+
+            imagePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (imageGesture.type === 'pinch') {
+                const pointers = Array.from(imagePointers.values());
+                if (pointers.length < 2) return;
+
+                const scale = getImagePointerDistance(pointers[0], pointers[1]) / imageGesture.startDistance;
+                const minScale = imageBaseSize
+                    ? Math.max(imageBaseSize.width * 0.1 / imageGesture.startWidth, imageBaseSize.height * 0.1 / imageGesture.startHeight)
+                    : 0.1;
+                const boundedScale = Math.max(minScale, scale);
+                const width = imageGesture.startWidth * boundedScale;
+                const height = imageGesture.startHeight * boundedScale;
+                imageWrapper.style.width = width + 'px';
+                imageWrapper.style.height = height + 'px';
+                imageWrapper.style.left = (imageGesture.startLeft - (width - imageGesture.startWidth) / 2) + 'px';
+                imageWrapper.style.top = (imageGesture.startTop - (height - imageGesture.startHeight) / 2) + 'px';
+            } else if (imageGesture.type === 'resize') {
+                resizeWindowFromCorner(
+                    imageWrapper,
+                    imageGesture,
+                    { x: e.clientX, y: e.clientY },
+                    imageBaseSize ? imageBaseSize.width * 0.1 : 16,
+                    imageBaseSize ? imageBaseSize.height * 0.1 : 10
+                );
+            } else {
+                const deltaX = e.clientX - imageGesture.startX;
+                const deltaY = e.clientY - imageGesture.startY;
+                imageWrapper.style.left = (imageGesture.startLeft + deltaX) + 'px';
+                imageWrapper.style.top = (imageGesture.startTop + deltaY) + 'px';
+            }
+            e.preventDefault();
+        });
+
+        function endImageGesture(e) {
+            if (!imagePointers.delete(e.pointerId)) return;
+            imageGesture = null;
+            if (imagePointers.size) startImageGesture();
+        }
+
+        imageWrapper.addEventListener('pointerup', endImageGesture);
+        imageWrapper.addEventListener('pointercancel', endImageGesture);
+
+        /* =========================
+           摄像头窗口触屏/鼠标拖动与缩放
+        ========================= */
+        const cameraPointers = new Map();
+        let cameraGesture = null;
+
+        function getCameraBaseSize() {
+            const style = getComputedStyle(cameraWrapper);
+            return {
+                width: parseFloat(style.getPropertyValue('--camera-base-width')) || 320,
+                height: parseFloat(style.getPropertyValue('--camera-base-height')) || 240
+            };
+        }
+
+        function getCameraPointerDistance(first, second) {
+            return Math.hypot(second.x - first.x, second.y - first.y);
+        }
+
+        function startCameraGesture() {
+            const pointers = Array.from(cameraPointers.values());
+            if (pointers.length >= 2) {
+                cameraGesture = {
+                    type: 'pinch',
+                    startDistance: Math.max(1, getCameraPointerDistance(pointers[0], pointers[1])),
+                    startWidth: cameraWrapper.clientWidth,
+                    startHeight: cameraWrapper.clientHeight,
+                    startLeft: cameraWrapper.offsetLeft,
+                    startTop: cameraWrapper.offsetTop
+                };
+                return;
+            }
+
+            const pointer = pointers[0];
+            const rect = cameraWrapper.getBoundingClientRect();
+            cameraGesture = {
+                type: pointer.resizeCorner ? 'resize' : 'drag',
+                resizeCorner: pointer.resizeCorner,
+                startX: pointer.x,
+                startY: pointer.y,
+                startWidth: rect.width,
+                startHeight: rect.height,
+                startLeft: cameraWrapper.offsetLeft,
+                startTop: cameraWrapper.offsetTop
+            };
+        }
+
+        cameraWrapper.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
+            if (cameraOpacityControl.contains(e.target) || e.target === cameraWindowMirrorBtn) return;
+
+            const resizeHandle = e.target.closest('.window-resize-handle');
+            cameraPointers.set(e.pointerId, {
+                x: e.clientX,
+                y: e.clientY,
+                resizeCorner: resizeHandle?.dataset.corner || null
+            });
+            cameraWrapper.setPointerCapture(e.pointerId);
+            startCameraGesture();
+            e.preventDefault();
+        });
+
+        cameraWrapper.addEventListener('pointermove', (e) => {
+            if (!cameraPointers.has(e.pointerId) || !cameraGesture) return;
+
+            cameraPointers.set(e.pointerId, {
+                ...cameraPointers.get(e.pointerId),
+                x: e.clientX,
+                y: e.clientY
+            });
+
+            if (cameraGesture.type === 'pinch') {
+                const pointers = Array.from(cameraPointers.values());
+                if (pointers.length < 2) return;
+
+                const scale = getCameraPointerDistance(pointers[0], pointers[1]) / cameraGesture.startDistance;
+                const baseSize = getCameraBaseSize();
+                const minScale = Math.max(baseSize.width * 0.1 / cameraGesture.startWidth, baseSize.height * 0.1 / cameraGesture.startHeight);
+                const boundedScale = Math.max(minScale, scale);
+                const width = cameraGesture.startWidth * boundedScale;
+                const height = cameraGesture.startHeight * boundedScale;
+
+                cameraWrapper.style.width = width + 'px';
+                cameraWrapper.style.height = height + 'px';
+                cameraWrapper.style.left = (cameraGesture.startLeft - (width - cameraGesture.startWidth) / 2) + 'px';
+                cameraWrapper.style.top = (cameraGesture.startTop - (height - cameraGesture.startHeight) / 2) + 'px';
+            } else if (cameraGesture.type === 'resize') {
+                const baseSize = getCameraBaseSize();
+                resizeWindowFromCorner(
+                    cameraWrapper,
+                    cameraGesture,
+                    cameraPointers.get(e.pointerId),
+                    baseSize.width * 0.1,
+                    baseSize.height * 0.1
+                );
+            } else {
+                const pointer = cameraPointers.get(e.pointerId);
+                const deltaX = pointer.x - cameraGesture.startX;
+                const deltaY = pointer.y - cameraGesture.startY;
+                cameraWrapper.style.left = (cameraGesture.startLeft + deltaX) + 'px';
+                cameraWrapper.style.top = (cameraGesture.startTop + deltaY) + 'px';
+            }
+            e.preventDefault();
+        });
+
+        function endCameraPointer(e) {
+            if (!cameraPointers.delete(e.pointerId)) return;
+            cameraGesture = null;
+            if (cameraPointers.size) startCameraGesture();
+        }
+
+        cameraWrapper.addEventListener('pointerup', endCameraPointer);
+        cameraWrapper.addEventListener('pointercancel', endCameraPointer);
+    </script>
+</body>
+</html>
